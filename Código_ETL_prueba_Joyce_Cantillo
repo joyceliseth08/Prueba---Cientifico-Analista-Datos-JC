@@ -1,0 +1,154 @@
+# %%
+# Código de ETL: Toma los datos de las tablas Municipio y las descargadas del REP Vigente, las trata y las almacena en la base de datos. 
+
+# Se importan las librerías requeridas para el proceso ETL
+from sqlalchemy import create_engine  # Librería para crear conexiones con motores de bases de datos (en este caso PostgreSQL)
+import pandas as pd  # Librería clave para manejo y análisis de datos estructurados en DataFrames
+import re  # Librería para uso de expresiones regulares, útil para limpiar texto
+import os  # Librería que permite interactuar con el sistema de archivos del sistema operativo
+import csv  # Librería para trabajar con archivos CSV
+import psycopg2  # Librería que permite la conexión y uso de bases de datos PostgreSQL
+
+# %%
+# Leer archivo de Excel de Municipios
+path = r'E:\Computador\JOYCE\Busqueda contrato joyce\Convocatoria_IETS\Prueba\Prueba Práctica - Cientifico Analista Datos\REPS_vigente_CSV\Municipios.xlsx'
+df_Municipio = pd.read_excel(path)  # Carga el archivo Excel en un DataFrame para su posterior tratamiento
+
+# %%
+# Leer archivo consolidado del REPS vigente
+path = r'E:\Computador\JOYCE\Busqueda contrato joyce\Convocatoria_IETS\Prueba\Prueba Práctica - Cientifico Analista Datos\REPS_vigente_CSV\consolidado.xlsx'
+df_consolidado = pd.read_excel(path)  # Carga el Excel consolidado del REPS en un DataFrame
+
+# %%
+# Función para limpiar nombres de municipios
+def limpiar_municipio(nombre):
+    if pd.isnull(nombre):  # Si el valor es nulo, retorna una cadena vacía
+        return ""
+    nombre = re.sub(r"[^A-Za-zÁÉÍÓÚÑáéíóúñ\s]", "", nombre)  # Elimina caracteres especiales, dejando letras, tildes, ñ y espacios
+    nombre = re.sub(r"\s+", " ", nombre)  # Reemplaza múltiples espacios por uno solo
+    nombre = nombre.strip()  # Elimina espacios al inicio y al final
+    nombre = nombre.title()  # Pone la primera letra en mayúscula de cada palabra
+    return nombre
+
+df_Municipio["Municipio_Limpio"] = df_Municipio["Municipio"].apply(limpiar_municipio)  # Aplica la función anterior a cada fila
+
+# %%
+df_Municipio['Municipio_Limpio'] = df_Municipio['Municipio_Limpio'].str.upper()  # Convierte todos los nombres limpios a mayúscula
+
+# Renombrar columnas para que coincidan con las usadas en los datos del REPS
+df_Municipio = df_Municipio.rename(columns={
+    'Municipio_Limpio': 'muni_nombre',
+    'Departamento': 'depa_nombre',
+    'DP': 'depa_codigo'
+})
+
+df_Municipio = df_Municipio.drop(columns=['Municipio'])  # Elimina la columna original con caracteres especiales
+
+# %%
+# Se hace un merge para agregar el nombre del departamento a partir del código
+df_Municipio = df_Municipio.drop(columns=['depa_nombre']).merge(
+    df_consolidado[['depa_codigo', 'depa_nombre']],  # Selecciona columnas relevantes del consolidado
+    on='depa_codigo',  # Llave de cruce
+    how='left'  # Se conservan todos los registros de Municipio (izquierda)
+)
+
+# %%
+# Limpieza masiva de archivos CSV con errores de formato
+
+carpeta = r'E:\Computador\JOYCE\Busqueda contrato joyce\Convocatoria_IETS\Prueba\Prueba Práctica - Cientifico Analista Datos\REPS_vigente_CSV\Registro_actual'
+
+# Recorre todos los archivos dentro de la carpeta
+for archivo in os.listdir(carpeta):
+    if archivo.endswith(".csv") and "_corregido" not in archivo:  # Aplica solo a archivos .csv que aún no han sido corregidos
+        path = os.path.join(carpeta, archivo)  # Ruta completa al archivo
+        output_path = path.replace(".csv", "_corregido.csv")  # Ruta de salida para archivo corregido
+
+        # Abre el archivo CSV original con codificación ISO
+        with open(path, mode='r', encoding='ISO-8859-1') as infile:
+            reader = csv.reader(infile, delimiter=';')  # Lee usando punto y coma como delimitador
+            filas = list(reader)  # Carga todas las filas en una lista
+
+        num_columnas_encabezado = len(filas[0])  # Cuenta cuántas columnas tiene la cabecera
+
+        filas_corregidas = []  # Lista para guardar las filas corregidas
+        for fila in filas:  # Itera fila por fila
+            if len(fila) < num_columnas_encabezado:
+                fila += [''] * (num_columnas_encabezado - len(fila))  # Si faltan columnas, las rellena con cadenas vacías
+            elif len(fila) > num_columnas_encabezado:
+                fila = fila[:num_columnas_encabezado]  # Si hay columnas de más, las recorta
+            filas_corregidas.append(fila)  # Agrega la fila corregida
+
+        # Escribe el nuevo archivo corregido
+        with open(output_path, mode='w', newline='', encoding='ISO-8859-1') as outfile:
+            writer = csv.writer(outfile, delimiter=';')  # Escribe con punto y coma como separador
+            writer.writerows(filas_corregidas)  # Escribe todas las filas corregidas
+
+        print(f"✅ Archivo corregido: {archivo} → {os.path.basename(output_path)}")  # Informa en consola
+
+# %%
+path = r'E:\Computador\JOYCE\Busqueda contrato joyce\Convocatoria_IETS\Prueba\Prueba Práctica - Cientifico Analista Datos\REPS_vigente_CSV\Registro_actual\Servicios_corregido.csv'
+Servicios_corregido = pd.read_csv(path, sep=';', encoding='ISO-8859-1')  # Carga archivo corregido
+
+# %%
+# Filtra filas válidas donde el nombre del departamento no esté vacío y su longitud sea menor o igual a 21
+Servicios_corregido = Servicios_corregido[
+    (Servicios_corregido['depa_nombre'].notna()) &
+    (Servicios_corregido['depa_nombre'].astype(str).apply(len) <= 21)
+]
+
+# Sobreescribe el archivo con los datos filtrados
+Servicios_corregido.to_csv('Servicios_corregido.csv', index=False, encoding='utf-8')
+
+# %%
+# Crea un diccionario donde se almacenarán los DataFrames leídos desde archivos corregidos
+dataframes = {}
+
+# Recorre nuevamente la carpeta para leer los archivos corregidos
+for archivo in os.listdir(carpeta):
+    if archivo.endswith("_corregido.csv"):  # Solo archivos ya corregidos
+        path = os.path.join(carpeta, archivo)
+        nombre_df = archivo.replace("_corregido.csv", "").lower().replace(" ", "_")  # Nombre para el diccionario
+
+        try:
+            df = pd.read_csv(path, sep=';', encoding='ISO-8859-1', on_bad_lines='skip')  # Lee CSV saltando líneas defectuosas
+            dataframes[nombre_df] = df  # Agrega al diccionario
+            print(f"✅ DataFrame creado: {nombre_df} ({df.shape[0]} filas, {df.shape[1]} columnas)")  # Mensaje en consola
+        except Exception as e:
+            print(f"❌ Error al leer {archivo}: {e}")  # En caso de error, lo informa
+
+# %%
+# Configura los parámetros de conexión a PostgreSQL
+usuario = "postgres"
+contraseña = "postgres"
+host = "localhost"
+puerto = "5432"
+base_datos = "REPS_Vigente"
+
+# Crea el motor de conexión usando SQLAlchemy y psycopg2
+engine = create_engine(f'postgresql+psycopg2://{usuario}:{contraseña}@{host}:{puerto}/{base_datos}')
+
+# %%
+# Carga cada archivo corregido como tabla en PostgreSQL
+for archivo in os.listdir(carpeta):
+    if archivo.endswith("_corregido.csv"):
+        path = os.path.join(carpeta, archivo)
+        df = pd.read_csv(path, sep=';', encoding='ISO-8859-1')  # Lee el CSV
+
+        nombre_tabla = "Registro_actual_" + archivo.replace("_corregido.csv", "")  # Crea nombre estándar para la tabla
+
+        df.to_sql(nombre_tabla, engine, if_exists="replace", index=False)  # Carga el DataFrame como tabla
+
+        print(f"✅ Tabla creada: {nombre_tabla} con {df.shape[0]} filas y {df.shape[1]} columnas")  # Confirma en consola
+
+# %%
+# Carga el consolidado y los municipios tratados a la base de datos
+df_consolidado.to_sql("Consolidado", engine, schema="public", if_exists="replace", index=False)
+df_Municipio.to_sql("Municipio", engine, schema="public", if_exists="replace", index=False)
+
+# %%
+# Carga final del archivo Detallado_de_capacidad_instalada
+path = r'E:\Computador\JOYCE\Busqueda contrato joyce\Convocatoria_IETS\Prueba\Prueba Práctica - Cientifico Analista Datos\REPS_vigente_CSV\Detallado_de_capacidad_instalada.xlsx'
+df_Detallado_de_capacidad_instalada = pd.read_excel(path)  # Carga desde Excel
+df_Detallado_de_capacidad_instalada.to_sql("Detallado_de_capacidad_instalada", engine, schema="public", if_exists="replace", index=False)  # Subida a SQL
+
+# %%
