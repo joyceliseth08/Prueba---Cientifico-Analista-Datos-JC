@@ -1,0 +1,10 @@
+-- Codigo Usado para traerse los datos de la tabla consolidado y realizar georeferenciación en Power BI
+
+SELECT 
+    *,  -- Selecciona todas las columnas existentes de la tabla "Consolidado"
+    
+    'Colombia' AS pais,  -- Crea una nueva columna llamada "pais" y le asigna el valor constante 'Colombia' para todas las filas
+    
+    "depa_nombre" || ', ' || 'Colombia' AS depa_pais  -- Crea una nueva columna llamada "depa_pais" que concatena el valor de la columna "depa_nombre" con la cadena ', Colombia'
+
+FROM public."Consolidado";  -- Especifica la tabla de origen que se encuentra en el esquema "public" y se llama "Consolidado"
