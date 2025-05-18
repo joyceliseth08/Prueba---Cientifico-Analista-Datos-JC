@@ -1,0 +1,12 @@
+-- Codigo usado para traer datos de tabla Minicipio 
+
+SELECT 
+    "muni_nombre",  -- Selecciona la columna "muni_nombre", que contiene el nombre del municipio    
+    "depa_nombre",  -- Selecciona la columna "depa_nombre", que contiene el nombre del departamento al que pertenece el municipio    
+    "MPIO",         -- Selecciona la columna "MPIO", que probablemente contiene un código identificador del municipio    
+    "PopTot",       -- Selecciona la columna "PopTot", que contiene la población total del municipio    
+    "Rural",        -- Selecciona la columna "Rural", que representa el porcentaje o proporción rural del municipio    
+    "Region",       -- Selecciona la columna "Region", que indica a qué región pertenece el municipio    
+    'Colombia' AS pais,  -- Crea una nueva columna llamada "pais" con el valor fijo 'Colombia' para todas las filas    
+    muni_nombre || ', Colombia' AS muni_pais  -- Crea una nueva columna llamada "muni_pais" que concatena el nombre del municipio con la palabra 'Colombia'
+FROM public."Municipio";  -- Indica que los datos se obtienen de la tabla "Municipio" ubicada en el esquema "public"
