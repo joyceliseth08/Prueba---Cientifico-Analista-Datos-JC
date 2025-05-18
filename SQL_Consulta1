@@ -1,0 +1,40 @@
+--Este código lo use para obtener la complejidad alta de la tabla servicios y poder cruzarlo con los datos de la tabla Municipio teniendo en cuenta que la única llave en común sería el nombre del departamento
+
+-- CTE (Common Table Expression) que calcula por cada departamento:
+-- - Total de servicios registrados
+-- - Total de servicios de alta complejidad
+WITH ServiciosPorDepa AS (
+    SELECT 
+        depa_nombre,  -- Nombre del departamento
+        COUNT(numero_sede) AS total_servicios,  -- Cuenta cuántos servicios hay por sede en cada departamento
+        SUM(CASE WHEN complejidad_alta = 'SI' THEN 1 ELSE 0 END) AS complejidad_alta_total  
+        -- Suma 1 si el servicio es de alta complejidad, 0 si no. Esto da el total de alta complejidad
+    FROM public."Registro_actual_Servicios"
+    GROUP BY depa_nombre  -- Agrupa los resultados por nombre de departamento
+),
+
+-- Segunda CTE que agrupa información de los municipios por departamento:
+MunicipiosAgrupados AS (
+    SELECT 
+        depa_nombre,  -- Nombre del departamento
+        SUM("PopTot") AS PopTot,  -- Suma total de población de todos los municipios del departamento
+        AVG("Superficie") AS Superficie,  -- Promedio de superficie de los municipios (se podría usar SUM si se desea el total)
+        AVG("Rural") AS Rural,  -- Promedio del porcentaje de ruralidad en el departamento
+        MAX("Region") AS Region  -- Se asume que todos los municipios del departamento están en la misma región, por eso se toma una sola (la mayor)
+    FROM public."Municipio"
+    GROUP BY depa_nombre  -- Agrupa por nombre de departamento
+)
+
+-- Consulta final que une las dos CTE anteriores
+SELECT 
+    m.depa_nombre,  -- Nombre del departamento
+    m.PopTot,  -- Población total del departamento (suma de municipios)
+    m.Superficie,  -- Promedio de superficie
+    m.Rural,  -- Promedio de ruralidad
+    m.Region,  -- Región del departamento
+    COALESCE(s.total_servicios, 0) AS total_servicios,  -- Si no hay datos de servicios, retorna 0
+    COALESCE(s.complejidad_alta_total, 0) AS complejidad_alta_total  -- Si no hay datos de alta complejidad, retorna 0
+FROM MunicipiosAgrupados m
+LEFT JOIN ServiciosPorDepa s 
+    ON m.depa_nombre = s.depa_nombre  -- Une por nombre de departamento, que es la única llave común
+ORDER BY m.depa_nombre;  -- Ordena el resultado por nombre de departamento
